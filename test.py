@@ -81,23 +81,24 @@ def main(rank, opt, face_recon_ckpt_path, parametric_face_model_path):
             print("%s is not found !!!"%lm_path[i])
             continue
         im_tensor, lm_tensor = read_data(im_path[i], lm_path[i], lm3d_std)
-        data = {
-            'imgs': im_tensor,
-            'lms': lm_tensor
-        }
-        model.set_input(data)  # unpack data from data loader
+        
+        #data = {
+        #    'imgs': im_tensor,
+        #    'lms': lm_tensor
+        #}
+        #model.set_input(data)  # unpack data from data loader
         #model.test()           # run inference
         with torch.no_grad():
-            model.proj_img_to_3d(use_exp=False)
-            model.proj_3d_to_img(use_tex=True)
-            model.compute_visuals()        
+            face_shape, pose, gamma_coef, tex_coef = model.proj_img_to_3d(im_tensor.to(device), use_exp=True)
+            pred_face, pred_mask, pred_lm = model.proj_3d_to_img(face_shape, pose, gamma_coef,None) #tex_coef)
+            model.compute_visuals(im_tensor, pred_face, pred_mask, pred_lm, lm_tensor)        
 
         visuals = model.get_current_visuals()  # get image results
         visualizer.display_current_results(visuals, 0, opt.epoch, dataset=opt.img_folder.split(os.path.sep)[-1], 
             save_results=True, count=i, name=img_name, add_image=False)
 
-        model.save_mesh(os.path.join(visualizer.img_dir, opt.img_folder.split(os.path.sep)[-1], 'epoch_%s_%06d'%(opt.epoch, 0),img_name+'.obj')) # save reconstruction meshes
-        model.save_coeff(os.path.join(visualizer.img_dir, opt.img_folder.split(os.path.sep)[-1], 'epoch_%s_%06d'%(opt.epoch, 0),img_name+'.mat')) # save predicted coefficients
+        #model.save_mesh(os.path.join(visualizer.img_dir, opt.img_folder.split(os.path.sep)[-1], 'epoch_%s_%06d'%(opt.epoch, 0),img_name+'.obj')) # save reconstruction meshes
+        #model.save_coeff(os.path.join(visualizer.img_dir, opt.img_folder.split(os.path.sep)[-1], 'epoch_%s_%06d'%(opt.epoch, 0),img_name+'.mat')) # save predicted coefficients
 
 if __name__ == '__main__':
     # Get options from the TestOptions class

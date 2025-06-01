@@ -117,19 +117,22 @@ class FaceReconModel(BaseModel):
         self.trans_m = input['M'].to(self.device) if 'M' in input else None
         self.image_paths = input['im_paths'] if 'im_paths' in input else None
 
-    def proj_img_to_3d(self, use_exp=True):
-        output_coeff = self.net_recon(self.input_img)
-        self.pred_face_shape, self.pred_pose, self.pred_gamma_coef, self.pred_tex_coef = \
+    def proj_img_to_3d(self, img_tensor, use_exp=True):
+        output_coeff = self.net_recon(img_tensor)
+        pred_face_shape, pred_pose, pred_gamma_coef, pred_tex_coef = \
             self.facemodel.compute_shape_pose(output_coeff, use_exp=use_exp)
 
-        self.pred_coeffs_dict = self.facemodel.split_coeff(output_coeff) #TODO: remove later
+        #pred_coeffs_dict = self.facemodel.split_coeff(output_coeff) #TODO: remove later
 
-    def proj_3d_to_img(self, use_tex=True):
-        tex = self.pred_tex_coef if use_tex else None
-        self.pred_vertex, self.pred_tex, self.pred_color, self.pred_lm = self.facemodel.compute_for_render_from_shape(
-            self.pred_face_shape, self.pred_pose, self.pred_gamma_coef, tex)
-        self.pred_mask, _, self.pred_face = self.renderer(
-            self.pred_vertex, self.facemodel.face_buf, feat=self.pred_color)
+        return pred_face_shape, pred_pose, pred_gamma_coef, pred_tex_coef
+
+    def proj_3d_to_img(self, face_shape, pose, gamma_coef, tex_coef=None):
+        pred_vertex, pred_color, pred_lm = \
+            self.facemodel.compute_for_render_from_shape(face_shape, pose, gamma_coef, tex_coef)
+        pred_mask, _, pred_face = self.renderer(
+            pred_vertex, self.facemodel.face_buf, feat=pred_color)
+
+        return pred_face.detach().cpu(), pred_mask.detach().cpu(), pred_lm.detach().cpu()
 
     def forward(self):
         output_coeff = self.net_recon(self.input_img)
@@ -140,15 +143,15 @@ class FaceReconModel(BaseModel):
         
         self.pred_coeffs_dict = self.facemodel.split_coeff(output_coeff)
 
-    def compute_visuals(self):
+    def compute_visuals(self, input_img, pred_face, pred_mask, pred_lm, gt_lm=None):
         with torch.no_grad():
-            input_img_numpy = 255. * self.input_img.detach().cpu().permute(0, 2, 3, 1).numpy()
-            output_vis = self.pred_face * self.pred_mask + (1 - self.pred_mask) * self.input_img
+            input_img_numpy = 255. * input_img.detach().cpu().permute(0, 2, 3, 1).numpy()
+            output_vis = pred_face * pred_mask + (1 - pred_mask) * input_img
             output_vis_numpy_raw = 255. * output_vis.detach().cpu().permute(0, 2, 3, 1).numpy()
             
-            if self.gt_lm is not None:
-                gt_lm_numpy = self.gt_lm.cpu().numpy()
-                pred_lm_numpy = self.pred_lm.detach().cpu().numpy()
+            if gt_lm is not None:
+                gt_lm_numpy = gt_lm.cpu().numpy()
+                pred_lm_numpy = pred_lm.detach().cpu().numpy()
                 output_vis_numpy = util.draw_landmarks(output_vis_numpy_raw, gt_lm_numpy, 'b')
                 output_vis_numpy = util.draw_landmarks(output_vis_numpy, pred_lm_numpy, 'r')
             
@@ -180,6 +183,13 @@ class FaceReconModel(BaseModel):
         pred_lm = np.stack([pred_lm[:,:,0],self.input_img.shape[2]-1-pred_lm[:,:,1]],axis=2) # transfer to image coordinate
         pred_coeffs['lm68'] = pred_lm
         savemat(name,pred_coeffs)
+
+    def parallelize(self, convert_sync_batchnorm=True):
+        if not self.opt.use_ddp:
+            for name in self.parallel_names:
+                if isinstance(name, str):
+                    module = getattr(self, name)
+                    setattr(self, name, module.to(self.device))
 
 
 
