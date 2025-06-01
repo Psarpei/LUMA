@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from .base_model import BaseModel
+#from .base_model import BaseModel
 from . import networks
 from .pfm import ParametricFaceModel
 from util import util 
@@ -10,68 +10,11 @@ from util.preprocess import estimate_norm_torch
 import trimesh
 from scipy.io import savemat
 
-class FaceReconModel(BaseModel):
-
-    @staticmethod
-    def modify_commandline_options(parser, is_train=True):
-        """  Configures options specific for CUT model
-        """
-        # net structure and parameters
-        parser.add_argument('--net_recon', type=str, default='resnet50', choices=['resnet18', 'resnet34', 'resnet50'], help='network structure')
-        parser.add_argument('--init_path', type=str, default='checkpoints/init_model/resnet50-0676ba61.pth')
-        parser.add_argument('--use_last_fc', type=util.str2bool, nargs='?', const=True, default=False, help='zero initialize the last fc')
-        parser.add_argument('--bfm_folder', type=str, default='BFM')
-        parser.add_argument('--bfm_model', type=str, default='BFM_model_front.mat', help='bfm model')
-
-        # renderer parameters
-        parser.add_argument('--focal', type=float, default=1015.)
-        parser.add_argument('--center', type=float, default=112.)
-        parser.add_argument('--camera_d', type=float, default=10.)
-        parser.add_argument('--z_near', type=float, default=5.)
-        parser.add_argument('--z_far', type=float, default=15.)
-        parser.add_argument('--use_opengl', type=util.str2bool, nargs='?', const=True, default=True, help='use opengl context or not')
-
-        if is_train:
-            # training parameters
-            parser.add_argument('--net_recog', type=str, default='r50', choices=['r18', 'r43', 'r50'], help='face recog network structure')
-            parser.add_argument('--net_recog_path', type=str, default='checkpoints/recog_model/ms1mv3_arcface_r50_fp16/backbone.pth')
-            parser.add_argument('--use_crop_face', type=util.str2bool, nargs='?', const=True, default=False, help='use crop mask for photo loss')
-            parser.add_argument('--use_predef_M', type=util.str2bool, nargs='?', const=True, default=False, help='use predefined M for predicted face')
-
-            
-            # augmentation parameters
-            parser.add_argument('--shift_pixs', type=float, default=10., help='shift pixels')
-            parser.add_argument('--scale_delta', type=float, default=0.1, help='delta scale factor')
-            parser.add_argument('--rot_angle', type=float, default=10., help='rot angles, degree')
-
-            # loss weights
-            parser.add_argument('--w_feat', type=float, default=0.2, help='weight for feat loss')
-            parser.add_argument('--w_color', type=float, default=1.92, help='weight for loss loss')
-            parser.add_argument('--w_reg', type=float, default=3.0e-4, help='weight for reg loss')
-            parser.add_argument('--w_id', type=float, default=1.0, help='weight for id_reg loss')
-            parser.add_argument('--w_exp', type=float, default=0.8, help='weight for exp_reg loss')
-            parser.add_argument('--w_tex', type=float, default=1.7e-2, help='weight for tex_reg loss')
-            parser.add_argument('--w_gamma', type=float, default=10.0, help='weight for gamma loss')
-            parser.add_argument('--w_lm', type=float, default=1.6e-3, help='weight for lm loss')
-            parser.add_argument('--w_reflc', type=float, default=5.0, help='weight for reflc loss')
-
-
-
-        opt, _ = parser.parse_known_args()
-        parser.set_defaults(
-                focal=1015., center=112., camera_d=10., use_last_fc=False, z_near=5., z_far=15.
-            )
-        if is_train:
-            parser.set_defaults(
-                use_crop_face=True, use_predef_M=False
-            )
-        return parser
-
-    def __init__(self, opt, fr_ckpt_path, pfm_ckpt_path, device):
+class FaceReconModel():
+    def __init__(self, fr_ckpt_path, pfm_ckpt_path, device):
         """Initialize this model class.
 
         Parameters:
-            opt -- training/test options
             fr_ckpt_path -- checkpoint path
             pfm_ckpt_path -- parametric face model path
             device -- device to use 'cuda' or 'cpu'
@@ -80,7 +23,6 @@ class FaceReconModel(BaseModel):
         - (required) call the initialization function of BaseModel
         - define loss function, visualization images, model names, and optimizers
         """
-        BaseModel.__init__(self, opt)  # call the initialization method of BaseModel
         
         self.visual_names = ['output_vis']
         self.model_names = ['net_recon']
@@ -122,8 +64,6 @@ class FaceReconModel(BaseModel):
         pred_face_shape, pred_pose, pred_gamma_coef, pred_tex_coef = \
             self.facemodel.compute_shape_pose(output_coeff, use_exp=use_exp)
 
-        #pred_coeffs_dict = self.facemodel.split_coeff(output_coeff) #TODO: remove later
-
         return pred_face_shape, pred_pose, pred_gamma_coef, pred_tex_coef
 
     def proj_3d_to_img(self, face_shape, pose, gamma_coef, tex_coef=None):
@@ -136,12 +76,12 @@ class FaceReconModel(BaseModel):
 
     def forward(self):
         output_coeff = self.net_recon(self.input_img)
-        self.pred_vertex, self.pred_tex, self.pred_color, self.pred_lm = \
+        pred_face_shape, pred_vertex, pred_tex, pred_color, pred_lm = \
             self.facemodel.compute_for_render(output_coeff)
-        self.pred_mask, _, self.pred_face = self.renderer(
-            self.pred_vertex, self.facemodel.face_buf, feat=self.pred_color)
+        pred_mask, _, pred_face = self.renderer(
+            pred_vertex, self.facemodel.face_buf, feat=pred_color)
         
-        self.pred_coeffs_dict = self.facemodel.split_coeff(output_coeff)
+        return output_coeff, pred_face_shape, pred_face.detach().cpu(), pred_mask.detach().cpu(), pred_lm.detach().cpu()
 
     def compute_visuals(self, input_img, pred_face, pred_mask, pred_lm, gt_lm=None):
         with torch.no_grad():
@@ -161,9 +101,11 @@ class FaceReconModel(BaseModel):
                 output_vis_numpy = np.concatenate((input_img_numpy, 
                                     output_vis_numpy_raw), axis=-2)
 
-            self.output_vis = torch.tensor(
+            output_vis = torch.tensor(
                     output_vis_numpy / 255., dtype=torch.float32
                 ).permute(0, 3, 1, 2).to(self.device)
+
+            return output_vis
 
     def save_mesh(self, name):
 
@@ -184,12 +126,18 @@ class FaceReconModel(BaseModel):
         pred_coeffs['lm68'] = pred_lm
         savemat(name,pred_coeffs)
 
-    def parallelize(self, convert_sync_batchnorm=True):
-        if not self.opt.use_ddp:
-            for name in self.parallel_names:
-                if isinstance(name, str):
-                    module = getattr(self, name)
-                    setattr(self, name, module.to(self.device))
+    def parallelize(self):
+        for name in self.parallel_names:
+            if isinstance(name, str):
+                module = getattr(self, name)
+                setattr(self, name, module.to(self.device))
+
+    def eval(self):
+        """Make models eval mode"""
+        for name in self.model_names:
+            if isinstance(name, str):
+                net = getattr(self, name)
+                net.eval()
 
 
 

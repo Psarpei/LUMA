@@ -1,8 +1,9 @@
 """This script is the test script for Deep3DFaceRecon_pytorch
 """
 
+import argparse
 import os
-from options.test_options import TestOptions
+from collections import OrderedDict
 from util.visualizer import MyVisualizer
 from util.preprocess import align_img
 from PIL import Image
@@ -57,22 +58,17 @@ def read_data(im_path, lm_path, lm3d_std, to_tensor=True):
         lm = torch.tensor(lm).unsqueeze(0)
     return im, lm
 
-def main(rank, opt, face_recon_ckpt_path, parametric_face_model_path):
+def main(rank, img_folder, checkpoints_dir, face_recon_ckpt_path, parametric_face_model_path, BFM_folder):
     device = torch.device(rank)
     torch.cuda.set_device(device)
-    print(opt)
-    print(opt.model)
-    print("opt.net_recon", opt.net_recon)
-    print("opt.use_last_fc", opt.use_last_fc)
-    print("opt.init_path", opt.init_path)
 
-    model = FaceReconModel(opt, face_recon_ckpt_path, parametric_face_model_path, device)
+    model = FaceReconModel(face_recon_ckpt_path, parametric_face_model_path, device)
     model.parallelize()
     model.eval()
-    visualizer = MyVisualizer(opt)
+    visualizer = MyVisualizer(checkpoints_dir)
 
-    im_path, lm_path = get_data_path(opt.img_folder)
-    lm3d_std = load_lm3d(opt.bfm_folder) 
+    im_path, lm_path = get_data_path(img_folder)
+    lm3d_std = load_lm3d(BFM_folder) 
 
     for i in range(len(im_path)):
         print(i, im_path[i])
@@ -82,30 +78,27 @@ def main(rank, opt, face_recon_ckpt_path, parametric_face_model_path):
             continue
         im_tensor, lm_tensor = read_data(im_path[i], lm_path[i], lm3d_std)
         
-        #data = {
-        #    'imgs': im_tensor,
-        #    'lms': lm_tensor
-        #}
-        #model.set_input(data)  # unpack data from data loader
-        #model.test()           # run inference
         with torch.no_grad():
             face_shape, pose, gamma_coef, tex_coef = model.proj_img_to_3d(im_tensor.to(device), use_exp=True)
             pred_face, pred_mask, pred_lm = model.proj_3d_to_img(face_shape, pose, gamma_coef,None) #tex_coef)
-            model.compute_visuals(im_tensor, pred_face, pred_mask, pred_lm, lm_tensor)        
+            output_vis = model.compute_visuals(im_tensor, pred_face, pred_mask, pred_lm, lm_tensor)        
 
-        visuals = model.get_current_visuals()  # get image results
-        visualizer.display_current_results(visuals, 0, opt.epoch, dataset=opt.img_folder.split(os.path.sep)[-1], 
+        visuals = OrderedDict()
+        visuals['output_vis'] = output_vis
+        visualizer.display_current_results(visuals, 0, 20, dataset=img_folder.split(os.path.sep)[-1], 
             save_results=True, count=i, name=img_name, add_image=False)
 
         #model.save_mesh(os.path.join(visualizer.img_dir, opt.img_folder.split(os.path.sep)[-1], 'epoch_%s_%06d'%(opt.epoch, 0),img_name+'.obj')) # save reconstruction meshes
         #model.save_coeff(os.path.join(visualizer.img_dir, opt.img_folder.split(os.path.sep)[-1], 'epoch_%s_%06d'%(opt.epoch, 0),img_name+'.mat')) # save predicted coefficients
 
-if __name__ == '__main__':
-    # Get options from the TestOptions class
-    opt = TestOptions().parse()  # get test options
-    
+if __name__ == '__main__':   
+    parser = argparse.ArgumentParser("Test a pre-trained model")
+    parser.add_argument("--face_recon_ckpt_path", type=str, default='checkpoints/official/epoch_20.pth')
+    parser.add_argument("--parametric_face_model_path", type=str, default='BFM/BFM_model_front.mat')
+    parser.add_argument("--img_folder", type=str, default='datasets/examples')
+    parser.add_argument("--checkpoints_dir", type=str, default='checkpoints/official')
+    parser.add_argument("--BFM_folder", type=str, default='BFM')
 
-    face_recon_ckpt_path = 'checkpoints/official/epoch_20.pth'
-    parametric_face_model_path = 'BFM/BFM_model_front.mat'
-    main(0, opt, face_recon_ckpt_path, parametric_face_model_path)
+    args = parser.parse_args()
+    main(0, img_folder=args.img_folder, checkpoints_dir=args.checkpoints_dir, face_recon_ckpt_path=args.face_recon_ckpt_path, parametric_face_model_path=args.parametric_face_model_path, BFM_folder=args.BFM_folder)
     
