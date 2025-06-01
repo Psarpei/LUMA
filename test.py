@@ -66,8 +66,7 @@ def main(rank, opt, face_recon_ckpt_path, parametric_face_model_path):
     print("opt.use_last_fc", opt.use_last_fc)
     print("opt.init_path", opt.init_path)
 
-    model = FaceReconModel(opt, face_recon_ckpt_path, parametric_face_model_path)
-    model.device = device
+    model = FaceReconModel(opt, face_recon_ckpt_path, parametric_face_model_path, device)
     model.parallelize()
     model.eval()
     visualizer = MyVisualizer(opt)
@@ -87,7 +86,12 @@ def main(rank, opt, face_recon_ckpt_path, parametric_face_model_path):
             'lms': lm_tensor
         }
         model.set_input(data)  # unpack data from data loader
-        model.test()           # run inference
+        #model.test()           # run inference
+        with torch.no_grad():
+            model.proj_img_to_3d(use_exp=False)
+            model.proj_3d_to_img(use_tex=True)
+            model.compute_visuals()        
+
         visuals = model.get_current_visuals()  # get image results
         visualizer.display_current_results(visuals, 0, opt.epoch, dataset=opt.img_folder.split(os.path.sep)[-1], 
             save_results=True, count=i, name=img_name, add_image=False)
