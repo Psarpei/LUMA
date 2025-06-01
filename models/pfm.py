@@ -1,6 +1,3 @@
-"""This script defines the parametric 3d face model for Deep3DFaceRecon_pytorch
-"""
-
 import numpy as np
 import  torch
 import torch.nn.functional as F
@@ -79,7 +76,7 @@ class ParametricFaceModel:
                 setattr(self, key, torch.tensor(value).to(device))
 
     
-    def compute_shape(self, id_coeff, exp_coeff):
+    def compute_shape(self, id_coeff, exp_coeff, use_exp=True):
         """
         Return:
             face_shape       -- torch.tensor, size (B, N, 3)
@@ -90,9 +87,28 @@ class ParametricFaceModel:
         """
         batch_size = id_coeff.shape[0]
         id_part = torch.einsum('ij,aj->ai', self.id_base, id_coeff)
-        exp_part = torch.einsum('ij,aj->ai', self.exp_base, exp_coeff)
-        face_shape = id_part + exp_part + self.mean_shape.reshape([1, -1])
+        if use_exp:
+            exp_part = torch.einsum('ij,aj->ai', self.exp_base, exp_coeff)
+            face_shape = id_part + exp_part + self.mean_shape.reshape([1, -1])
+        else:
+            face_shape = id_part + self.mean_shape.reshape([1, -1])
         return face_shape.reshape([batch_size, -1, 3])
+
+    def compute_shape_id_delta_exp(self, id_coeff, exp_coeff):
+        """
+        Return:
+            face_shape_id    -- torch.tensor, size (B, N, 3)
+            delta_exp        -- torch.tensor, size (B, N, 3)
+
+        Parameters:
+            id_coeff         -- torch.tensor, size (B, 80), identity coeffs
+            exp_coeff        -- torch.tensor, size (B, 64), expression coeffs
+        """
+        batch_size = id_coeff.shape[0]
+        id_part = torch.einsum('ij,aj->ai', self.id_base, id_coeff)
+        delta_exp = torch.einsum('ij,aj->ai', self.exp_base, exp_coeff)
+        face_shape_id = id_part + self.mean_shape.reshape([1, -1])
+        return face_shape_id.reshape([batch_size, -1, 3]), delta_exp.reshape([batch_size, -1, 3])
     
 
     def compute_texture(self, tex_coeff, normalize=True):
@@ -267,10 +283,62 @@ class ParametricFaceModel:
             'gamma': gammas,
             'trans': translations
         }
+
+    def compute_shape_pose(self, coeffs, use_exp=True):
+        """
+        Return:
+            face_shape      -- torch.tensor, size (B, N, 3), in model coordinate
+            pose            -- a dict of torch.tensors, {'rot': rotation, 'trans': translation}
+            gamma_coeff     -- torch.tensor, size (B, 27), SH coeffs
+            tex             -- torch.tensor, size (B, 80), texture coeffs
+        Parameters:
+            coeffs          -- torch.tensor, size (B, 256)
+        """
+
+        coef_dict = self.split_coeff(coeffs)
+        face_shape = self.compute_shape(coef_dict['id'], coef_dict['exp'], use_exp)
+        rotation = self.compute_rotation(coef_dict['angle'])
+        pose = {'rot': rotation, 'trans': coef_dict['trans']}
+        
+        return face_shape, pose, coef_dict['gamma'], coef_dict['tex']
+
+    def compute_for_render_from_shape(self, face_shape, pose, gamma_coef, tex_coef=None):
+        """
+        Return:
+            face_vertex     -- torch.tensor, size (B, N, 3), in camera coordinate
+            face_texture    -- torch.tensor, size (B, N, 3), in RGB order
+            face_color      -- torch.tensor, size (B, N, 3), in RGB order
+            landmark        -- torch.tensor, size (B, 68, 2), y direction is opposite to v direction
+        Parameters:
+            face_shape      -- torch.tensor, size (B, N, 3), in model coordinate
+            pose            -- a dict of torch.tensors, {'rot': rotation, 'trans': translation}
+            gamma_coef      -- torch.tensor, size (B, 27), SH coeffs
+            tex_coef        -- (optional) torch.tensor, size (B, 80), texture coeffs
+        """
+
+        face_shape_transformed = self.transform(face_shape, pose['rot'], pose['trans'])
+        face_vertex = self.to_camera(face_shape_transformed)
+        
+        face_proj = self.to_image(face_vertex)
+        landmark = self.get_landmarks(face_proj)
+
+        if tex_coef is not None:
+            face_texture = self.compute_texture(tex_coef)
+        else:
+            B, N = face_vertex.shape[:2]
+            face_texture = torch.ones((B, N, 3), device=self.device)
+
+        face_norm = self.compute_norm(face_shape)
+        face_norm_roted = face_norm @ pose['rot']
+        face_color = self.compute_color(face_texture, face_norm_roted, gamma_coef)
+
+        return face_vertex, face_texture, face_color, landmark
+
     def compute_for_render(self, coeffs):
         """
         Return:
             face_vertex     -- torch.tensor, size (B, N, 3), in camera coordinate
+            face_texture    -- torch.tensor, size (B, N, 3), in RGB order
             face_color      -- torch.tensor, size (B, N, 3), in RGB order
             landmark        -- torch.tensor, size (B, 68, 2), y direction is opposite to v direction
         Parameters:
@@ -280,7 +348,6 @@ class ParametricFaceModel:
         coef_dict = self.split_coeff(coeffs)
         face_shape = self.compute_shape(coef_dict['id'], coef_dict['exp'])
         rotation = self.compute_rotation(coef_dict['angle'])
-
 
         face_shape_transformed = self.transform(face_shape, rotation, coef_dict['trans'])
         face_vertex = self.to_camera(face_shape_transformed)
