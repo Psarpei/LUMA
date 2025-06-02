@@ -1,11 +1,9 @@
 import numpy as np
 import torch
-#from .base_model import BaseModel
 from . import networks
 from .pfm import ParametricFaceModel
 from util import util 
 from util.nvdiffrast import MeshRenderer
-from util.preprocess import estimate_norm_torch
 
 import trimesh
 from scipy.io import savemat
@@ -81,31 +79,7 @@ class FaceReconModel():
         pred_mask, _, pred_face = self.renderer(
             pred_vertex, self.facemodel.face_buf, feat=pred_color)
         
-        return output_coeff, pred_face_shape, pred_face.detach().cpu(), pred_mask.detach().cpu(), pred_lm.detach().cpu()
-
-    def compute_visuals(self, input_img, pred_face, pred_mask, pred_lm, gt_lm=None):
-        with torch.no_grad():
-            input_img_numpy = 255. * input_img.detach().cpu().permute(0, 2, 3, 1).numpy()
-            output_vis = pred_face * pred_mask + (1 - pred_mask) * input_img
-            output_vis_numpy_raw = 255. * output_vis.detach().cpu().permute(0, 2, 3, 1).numpy()
-            
-            if gt_lm is not None:
-                gt_lm_numpy = gt_lm.cpu().numpy()
-                pred_lm_numpy = pred_lm.detach().cpu().numpy()
-                output_vis_numpy = util.draw_landmarks(output_vis_numpy_raw, gt_lm_numpy, 'b')
-                output_vis_numpy = util.draw_landmarks(output_vis_numpy, pred_lm_numpy, 'r')
-            
-                output_vis_numpy = np.concatenate((input_img_numpy, 
-                                    output_vis_numpy_raw, output_vis_numpy), axis=-2)
-            else:
-                output_vis_numpy = np.concatenate((input_img_numpy, 
-                                    output_vis_numpy_raw), axis=-2)
-
-            output_vis = torch.tensor(
-                    output_vis_numpy / 255., dtype=torch.float32
-                ).permute(0, 3, 1, 2).to(self.device)
-
-            return output_vis
+        return output_coeff.detach().cpu(), pred_face_shape.detach().cpu(), pred_face.detach().cpu(), pred_mask.detach().cpu(), pred_lm.detach().cpu()
 
     def save_mesh(self, name):
 
@@ -138,6 +112,3 @@ class FaceReconModel():
             if isinstance(name, str):
                 net = getattr(self, name)
                 net.eval()
-
-
-

@@ -9,6 +9,7 @@ import time
 from . import util, html
 from subprocess import Popen, PIPE
 from torch.utils.tensorboard import SummaryWriter
+import torch
 
 def save_images(webpage, visuals, image_path, aspect_ratio=1.0, width=256):
     """Save images to the disk.
@@ -191,3 +192,26 @@ class MyVisualizer:
                     else:
                         img_path = os.path.join(save_path, '%s_%03d.png' % (label, i + count))
                     util.save_image(image_numpy, img_path)
+
+    def compute_visuals(self, input_img, pred_face, pred_mask, pred_lm, gt_lm=None):
+        input_img_numpy = 255. * input_img.permute(0, 2, 3, 1).numpy()
+        output_vis = pred_face * pred_mask + (1 - pred_mask) * input_img
+        output_vis_numpy_raw = 255. * output_vis.permute(0, 2, 3, 1).numpy()
+        
+        if gt_lm is not None:
+            gt_lm_numpy = gt_lm.numpy()
+            pred_lm_numpy = pred_lm.numpy()
+            output_vis_numpy = util.draw_landmarks(output_vis_numpy_raw, gt_lm_numpy, 'b')
+            output_vis_numpy = util.draw_landmarks(output_vis_numpy, pred_lm_numpy, 'r')
+        
+            output_vis_numpy = np.concatenate((input_img_numpy, 
+                                output_vis_numpy_raw, output_vis_numpy), axis=-2)
+        else:
+            output_vis_numpy = np.concatenate((input_img_numpy, 
+                                output_vis_numpy_raw), axis=-2)
+
+        output_vis = torch.tensor(
+                output_vis_numpy / 255., dtype=torch.float32
+            ).permute(0, 3, 1, 2)
+
+        return output_vis

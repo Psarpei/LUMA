@@ -56,6 +56,7 @@ def read_data(im_path, lm_path, lm3d_std, to_tensor=True):
     if to_tensor:
         im = torch.tensor(np.array(im)/255., dtype=torch.float32).permute(2, 0, 1).unsqueeze(0)
         lm = torch.tensor(lm).unsqueeze(0)
+
     return im, lm
 
 def main(rank, img_folder, checkpoints_dir, face_recon_ckpt_path, parametric_face_model_path, BFM_folder):
@@ -79,9 +80,9 @@ def main(rank, img_folder, checkpoints_dir, face_recon_ckpt_path, parametric_fac
         im_tensor, lm_tensor = read_data(im_path[i], lm_path[i], lm3d_std)
         
         with torch.no_grad():
-            face_shape, pose, gamma_coef, tex_coef = model.proj_img_to_3d(im_tensor.to(device), use_exp=True)
+            face_shape, pose, gamma_coef, tex_coef = model.proj_img_to_3d(im_tensor.to(device), use_exp=False)
             pred_face, pred_mask, pred_lm = model.proj_3d_to_img(face_shape, pose, gamma_coef,None) #tex_coef)
-            output_vis = model.compute_visuals(im_tensor, pred_face, pred_mask, pred_lm, lm_tensor)        
+            output_vis = visualizer.compute_visuals(im_tensor, pred_face, pred_mask, pred_lm, lm_tensor)        
 
         visuals = OrderedDict()
         visuals['output_vis'] = output_vis
