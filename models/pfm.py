@@ -2,7 +2,6 @@ import numpy as np
 import  torch
 import torch.nn.functional as F
 from scipy.io import loadmat
-import os
 
 def perspective_projection(focal, center):
     # return p.T (N, 3) @ (3, 3) 
