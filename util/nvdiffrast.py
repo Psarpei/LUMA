@@ -3,13 +3,9 @@
 """
 
 import torch
-import torch.nn.functional as F
-import kornia
-from kornia.geometry.camera import pixel2cam
 import numpy as np
 from typing import List
 import nvdiffrast.torch as dr
-from scipy.io import loadmat
 from torch import nn
 
 def ndc_projection(x=0.1, n=1.0, f=50.0):
