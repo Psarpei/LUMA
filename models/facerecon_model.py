@@ -2,11 +2,7 @@ import numpy as np
 import torch
 from . import networks
 from .pfm import ParametricFaceModel
-from util import util 
 from util.nvdiffrast import MeshRenderer
-
-import trimesh
-from scipy.io import savemat
 
 class FaceReconModel():
     def __init__(self, fr_ckpt_path, pfm_ckpt_path, device):
@@ -16,10 +12,6 @@ class FaceReconModel():
             fr_ckpt_path -- checkpoint path
             pfm_ckpt_path -- parametric face model path
             device -- device to use 'cuda' or 'cpu'
-
-        A few things can be done here.
-        - (required) call the initialization function of BaseModel
-        - define loss function, visualization images, model names, and optimizers
         """
         
         self.visual_names = ['output_vis']
@@ -44,6 +36,8 @@ class FaceReconModel():
         self.renderer = MeshRenderer(
             rasterize_fov=fov, znear=5.0, zfar=15.0, rasterize_size=int(2 * 112), use_opengl=False
         )
+
+        self.parallelize()
 
     def set_input(self, input):
         """Unpack input data from the dataloader and perform necessary pre-processing steps.
@@ -80,25 +74,6 @@ class FaceReconModel():
             pred_vertex, self.facemodel.face_buf, feat=pred_color)
         
         return output_coeff.detach().cpu(), pred_face_shape.detach().cpu(), pred_face.detach().cpu(), pred_mask.detach().cpu(), pred_lm.detach().cpu()
-
-    def save_mesh(self, name):
-
-        recon_shape = self.pred_vertex  # get reconstructed shape
-        recon_shape[..., -1] = 10 - recon_shape[..., -1] # from camera space to world space
-        recon_shape = recon_shape.cpu().numpy()[0]
-        recon_color = self.pred_color
-        recon_color = recon_color.cpu().numpy()[0]
-        tri = self.facemodel.face_buf.cpu().numpy()
-        mesh = trimesh.Trimesh(vertices=recon_shape, faces=tri, vertex_colors=np.clip(255. * recon_color, 0, 255).astype(np.uint8), process=False)
-        mesh.export(name)
-
-    def save_coeff(self,name):
-
-        pred_coeffs = {key:self.pred_coeffs_dict[key].cpu().numpy() for key in self.pred_coeffs_dict}
-        pred_lm = self.pred_lm.cpu().numpy()
-        pred_lm = np.stack([pred_lm[:,:,0],self.input_img.shape[2]-1-pred_lm[:,:,1]],axis=2) # transfer to image coordinate
-        pred_coeffs['lm68'] = pred_lm
-        savemat(name,pred_coeffs)
 
     def parallelize(self):
         for name in self.parallel_names:
