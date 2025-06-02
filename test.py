@@ -59,17 +59,16 @@ def read_data(im_path, lm_path, lm3d_std, to_tensor=True):
 
     return im, lm
 
-def main(rank, img_folder, checkpoints_dir, face_recon_ckpt_path, parametric_face_model_path, BFM_folder):
+def main(rank, img_folder, checkpoints_dir, face_recon_ckpt_path, parametric_face_model_path, sim_lm3d_path):
     device = torch.device(rank)
     torch.cuda.set_device(device)
 
     model = FaceReconModel(face_recon_ckpt_path, parametric_face_model_path, device)
-    model.parallelize()
     model.eval()
     visualizer = MyVisualizer(checkpoints_dir)
 
     im_path, lm_path = get_data_path(img_folder)
-    lm3d_std = load_lm3d(BFM_folder) 
+    lm3d_std = load_lm3d(sim_lm3d_path) 
 
     for i in range(len(im_path)):
         print(i, im_path[i])
@@ -80,7 +79,7 @@ def main(rank, img_folder, checkpoints_dir, face_recon_ckpt_path, parametric_fac
         im_tensor, lm_tensor = read_data(im_path[i], lm_path[i], lm3d_std)
         
         with torch.no_grad():
-            face_shape, pose, gamma_coef, tex_coef = model.proj_img_to_3d(im_tensor.to(device), use_exp=False)
+            face_shape, pose, gamma_coef, tex_coef = model.proj_img_to_3d(im_tensor.to(device), use_exp=True)
             pred_face, pred_mask, pred_lm = model.proj_3d_to_img(face_shape, pose, gamma_coef,None) #tex_coef)
             output_vis = visualizer.compute_visuals(im_tensor, pred_face, pred_mask, pred_lm, lm_tensor)        
 
@@ -89,17 +88,13 @@ def main(rank, img_folder, checkpoints_dir, face_recon_ckpt_path, parametric_fac
         visualizer.display_current_results(visuals, 0, 20, dataset=img_folder.split(os.path.sep)[-1], 
             save_results=True, count=i, name=img_name, add_image=False)
 
-        #model.save_mesh(os.path.join(visualizer.img_dir, opt.img_folder.split(os.path.sep)[-1], 'epoch_%s_%06d'%(opt.epoch, 0),img_name+'.obj')) # save reconstruction meshes
-        #model.save_coeff(os.path.join(visualizer.img_dir, opt.img_folder.split(os.path.sep)[-1], 'epoch_%s_%06d'%(opt.epoch, 0),img_name+'.mat')) # save predicted coefficients
-
 if __name__ == '__main__':   
     parser = argparse.ArgumentParser("Test a pre-trained model")
     parser.add_argument("--face_recon_ckpt_path", type=str, default='checkpoints/official/epoch_20.pth')
     parser.add_argument("--parametric_face_model_path", type=str, default='BFM/BFM_model_front.mat')
     parser.add_argument("--img_folder", type=str, default='datasets/examples')
     parser.add_argument("--checkpoints_dir", type=str, default='checkpoints/official')
-    parser.add_argument("--BFM_folder", type=str, default='BFM')
+    parser.add_argument("--sim_lm3d_path", type=str, default='BFM/similarity_Lm3D_all.mat')
 
     args = parser.parse_args()
-    main(0, img_folder=args.img_folder, checkpoints_dir=args.checkpoints_dir, face_recon_ckpt_path=args.face_recon_ckpt_path, parametric_face_model_path=args.parametric_face_model_path, BFM_folder=args.BFM_folder)
-    
+    main(0, img_folder=args.img_folder, checkpoints_dir=args.checkpoints_dir, face_recon_ckpt_path=args.face_recon_ckpt_path, parametric_face_model_path=args.parametric_face_model_path, sim_lm3d_path=args.sim_lm3d_path)
