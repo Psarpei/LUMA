@@ -14,7 +14,8 @@ from util.preprocess import align_img
 from util.load_mats import load_lm3d
 from models.facerecon_model import FaceReconModel
 import util.util as util
-from util.landmarks import process_landmarks, draw_numbered_landmarks, draw_lines_through_landmarks, mask_above_polyline
+from util.landmarks import process_landmarks, draw_lines_through_landmarks, mask_above_polyline
+from util.util import draw_numbered_landmarks
 
 # All landmark processing functions have been moved to util/landmarks.py
 
