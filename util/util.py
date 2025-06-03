@@ -10,6 +10,7 @@ try:
 except ImportError:
     from PIL.Image import BICUBIC
     RESAMPLING_METHOD = BICUBIC
+import cv2
 
         
 def tensor2im(input_image, imtype=np.uint8):
@@ -81,3 +82,44 @@ def draw_landmarks(img, landmark, color='r', step=2):
                     img[m, v[m], u[m]] = c
     return img
 
+def draw_numbered_landmarks(img, landmark, color='r', step=2, font_scale=0.3, selected_indices=None):
+    """    
+    Parameters:
+        img -- numpy.array, (H, W, 3), RGB order, range (0, 255)
+        landmark -- numpy.array, (68, 2), standard image coordinates (y increases downward)
+        color -- str, 'r' or 'b' (red or blue)
+        step -- int, size of the landmark dot
+        font_scale -- float, scale of the font for the indices
+        selected_indices -- list of indices to plot, if None plots all landmarks
+    
+    Returns:
+        img -- numpy.array, image with landmarks drawn
+    """
+    H, W = img.shape[:2]
+    if selected_indices is None:
+        selected_indices = list(range(landmark.shape[0]))
+    
+    if color == 'r':
+        c = (255, 0, 0)
+        cv_color = (0, 0, 255)
+    else:
+        c = (0, 0, 255)
+        cv_color = (255, 0, 0)
+    
+    for i in selected_indices:
+        x, y = int(round(landmark[i, 0])), int(round(landmark[i, 1]))
+        if 0 <= x < W and 0 <= y < H:
+            for j in range(-step, step):
+                for k in range(-step, step):
+                    u = np.clip(x + j, 0, W - 1)
+                    v = np.clip(y + k, 0, H - 1)
+                    img[v, u] = c
+        
+        # Add index number next to the landmark
+        # Position the text slightly offset from the landmark
+        text_x = np.clip(x + step + 1, 0, W - 1)
+        text_y = np.clip(y + step + 1, 0, H - 1)
+        cv2.putText(img, str(i), (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 
+                    font_scale, cv_color, 1)
+    
+    return img
