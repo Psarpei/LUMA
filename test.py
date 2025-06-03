@@ -247,7 +247,6 @@ def main(rank, img_folder, output_dir, face_recon_ckpt_path, parametric_face_mod
             gt_lm_flipped = lm_tensor.clone()
             gt_lm_flipped[..., 1] = H - 1 - gt_lm_flipped[..., 1]
             # --- Calculate mask_with_only_lines for the 5th image outside of save_visualization ---
-            from util.landmarks import mask_above_polyline
             mask_vis = 255. * pred_mask.permute(0, 2, 3, 1).numpy()
             B, H, W, _ = mask_vis.shape
             mask_with_only_lines = np.zeros((B, H, W, 3), dtype=np.uint8)
