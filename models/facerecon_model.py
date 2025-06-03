@@ -52,6 +52,25 @@ class FaceReconModel():
         self.image_paths = input['im_paths'] if 'im_paths' in input else None
 
     def proj_img_to_3d(self, img_tensor, use_exp=True):
+        """
+        Project input image to 3D face parameters.
+
+        Parameters:
+            img_tensor : torch.Tensor
+                Input image tensor, shape (B, C, H, W)
+            use_exp : bool
+                Whether to use expression coefficients
+
+        Returns:
+            face_shape : torch.Tensor
+                Shape (B, N, 3), 3D face shape in model coordinates
+            pose : dict
+                {'rot': rotation, 'trans': translation}, each torch.Tensor
+            gamma_coef : torch.Tensor
+                Shape (B, 27), spherical harmonics lighting coefficients
+            tex_coef : torch.Tensor
+                Shape (B, 80), texture coefficients
+        """
         output_coeff = self.net_recon(img_tensor)
         pred_face_shape, pred_pose, pred_gamma_coef, pred_tex_coef = \
             self.facemodel.compute_shape_pose(output_coeff, use_exp=use_exp)
@@ -59,12 +78,39 @@ class FaceReconModel():
         return pred_face_shape, pred_pose, pred_gamma_coef, pred_tex_coef
 
     def proj_3d_to_img(self, face_shape, pose, gamma_coef, tex_coef=None):
+        """
+        Project 3D face parameters to 2D image outputs.
+
+        Parameters:
+            face_shape : torch.Tensor
+                Shape (B, N, 3), 3D face shape in model coordinates
+            pose : dict
+                {'rot': rotation, 'trans': translation}, each torch.Tensor
+            gamma_coef : torch.Tensor
+                Shape (B, 27), spherical harmonics lighting coefficients
+            tex_coef : torch.Tensor or None
+                Shape (B, 80), texture coefficients (optional)
+
+        Returns:
+            pred_face : torch.Tensor
+                Shape (B, H, W, 3), rendered face RGB image, standard image axes (y increases downward)
+            pred_mask : torch.Tensor
+                Shape (B, 1, H, W), rendered face mask, standard image axes
+            pred_lm : torch.Tensor
+                Shape (B, 68, 2), 2D facial landmarks, y direction is opposite to image v direction (i.e., y=0 is bottom, y=H-1 is top)
+        """
         pred_vertex, pred_color, pred_lm = \
             self.facemodel.compute_for_render_from_shape(face_shape, pose, gamma_coef, tex_coef)
         pred_mask, _, pred_face = self.renderer(
             pred_vertex, self.facemodel.face_buf, feat=pred_color)
 
-        return pred_face.detach().cpu(), pred_mask.detach().cpu(), pred_lm.detach().cpu()
+        # Transform pred_lm to standard image coordinates (y increases downward)
+        # pred_mask: (B, 1, H, W)
+        B, _, H, W = pred_mask.shape
+        pred_lm_img = pred_lm.clone()
+        pred_lm_img[..., 1] = H - 1 - pred_lm_img[..., 1]
+
+        return pred_face.detach().cpu(), pred_mask.detach().cpu(), pred_lm_img.detach().cpu()
 
     def forward(self):
         output_coeff = self.net_recon(self.input_img)
