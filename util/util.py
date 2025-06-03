@@ -53,23 +53,23 @@ def save_image(image_numpy, image_path, aspect_ratio=1.0):
 
 def draw_landmarks(img, landmark, color='r', step=2):
     """
-    Return:
-        img              -- numpy.array, (B, H, W, 3) img with landmark, RGB order, range (0, 255)
-        
+    Draw landmarks on a batch of images using standard image coordinates (y increases downward).
 
     Parameters:
-        img              -- numpy.array, (B, H, W, 3), RGB order, range (0, 255)
-        landmark         -- numpy.array, (B, 68, 2), y direction is opposite to v direction
-        color            -- str, 'r' or 'b' (red or blue)
+        img      -- numpy.array, (B, H, W, 3), RGB order, range (0, 255)
+        landmark -- numpy.array, (B, 68, 2), standard image coordinates (y increases downward)
+        color    -- str, 'r' or 'b' (red or blue)
+        step     -- int, size of the landmark dot
+    Returns:
+        img      -- numpy.array, (B, H, W, 3) img with landmark overlays
     """
-    if color =='r':
+    if color == 'r':
         c = np.array([255., 0, 0])
     else:
         c = np.array([0, 0, 255.])
 
     _, H, W, _ = img.shape
     img, landmark = img.copy(), landmark.copy()
-    landmark[..., 1] = H - 1 - landmark[..., 1]
     landmark = np.round(landmark).astype(np.int32)
     for i in range(landmark.shape[1]):
         x, y = landmark[:, i, 0], landmark[:, i, 1]
@@ -80,3 +80,4 @@ def draw_landmarks(img, landmark, color='r', step=2):
                 for m in range(landmark.shape[0]):
                     img[m, v[m], u[m]] = c
     return img
+
