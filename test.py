@@ -75,13 +75,12 @@ def main(rank, img_folder, output_dir, face_recon_ckpt_path, parametric_face_mod
             B, H, W, _ = mask_vis.shape
             mask_with_only_lines = np.zeros((B, H, W, 1), dtype=np.uint8)
             for k in range(B):
-                if k == mask_vis.shape[0] - 1:
-                    mask_clean = pred_mask_numpy[k]
-                    mask_clean = (mask_clean * 255).astype(np.uint8)
-                    lm = processed_landmarks_batch[k]
-                    mask_with_only_lines[k] = mask_above_polyline(mask_clean, lm)
+                mask_clean = pred_mask_numpy[k].astype(np.uint8)
+                lm = processed_landmarks_batch[k]
+                mask_with_only_lines[k] = mask_above_polyline(mask_clean, lm)
 
             mask_with_only_lines = np.repeat(mask_with_only_lines, 3, axis=3)
+            mask_with_only_lines = (mask_with_only_lines * 255).astype(np.uint8)
             # Flip ground truth landmarks to image coordinates before visualization
             H = im_tensor.shape[2]
             gt_lm_flipped = lm_tensor.clone()
