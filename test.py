@@ -26,16 +26,15 @@ def read_data(im_path, lm_path, lm3d_std, to_tensor=True):
     lm = np.loadtxt(lm_path).astype(np.float32)
     lm = lm.reshape([-1, 2])
     lm[:, -1] = H - 1 - lm[:, -1]
-    #_, im, lm, _ = align_img(im, lm, lm3d_std)
     transparams, img_new, lm_new, mask_new = align_img(im, lm, lm3d_std)
-    #plot_alignment(im, img_new, mask_new)
-    im = img_new
-    lm = lm_new
+    orig_im = im.copy()
     if to_tensor:
-        im = torch.tensor(np.array(im)/255., dtype=torch.float32).permute(2, 0, 1).unsqueeze(0)
-        lm = torch.tensor(lm).unsqueeze(0)
-
-    return im, lm
+        im = torch.tensor(np.array(img_new)/255., dtype=torch.float32).permute(2, 0, 1).unsqueeze(0)
+        lm = torch.tensor(lm_new).unsqueeze(0)
+    else:
+        im = img_new
+        lm = lm_new
+    return im, lm, orig_im, transparams
 
 def main(rank, img_folder, output_dir, face_recon_ckpt_path, parametric_face_model_path, sim_lm3d_path):
     device = torch.device(rank)
@@ -53,7 +52,7 @@ def main(rank, img_folder, output_dir, face_recon_ckpt_path, parametric_face_mod
         if not os.path.isfile(lm_path[i]):
             print("%s is not found !!!"%lm_path[i])
             continue
-        im_tensor, lm_tensor = read_data(im_path[i], lm_path[i], lm3d_std)
+        im_tensor, lm_tensor, orig_im, transparams = read_data(im_path[i], lm_path[i], lm3d_std)
         
         with torch.no_grad():
             face_shape, pose, gamma_coef, tex_coef = model.proj_img_to_3d(im_tensor.to(device), use_exp=True)
@@ -87,6 +86,41 @@ def main(rank, img_folder, output_dir, face_recon_ckpt_path, parametric_face_mod
             gt_lm_flipped[..., 1] = H - 1 - gt_lm_flipped[..., 1]
             # Save visualization with both raw and processed landmarks, passing mask_with_only_lines
             save_visualization(im_tensor, pred_face, pred_mask, pred_lm, processed_landmarks_batch, gt_lm_flipped, img_name, output_dir, mask_with_only_lines=mask_with_only_lines)
+
+            # --- Transform pred_face back to original image space and save side-by-side plot ---
+            # pred_face: (B, 3, 224, 224), orig_im: PIL.Image, transparams: [w0, h0, s, tx, ty]
+            import cv2
+            pred_face_np = pred_face.detach().cpu().numpy()[0].transpose(1,2,0)  # (224, 224, 3)
+            pred_face_np = (pred_face_np * 255).clip(0,255).astype(np.uint8)
+            w0, h0, s, tx, ty = transparams
+            w0, h0 = int(w0), int(h0)
+            target_size = pred_face_np.shape[0]
+            # --- Compute the true inverse affine transform used in resize_n_crop_img ---
+            # Forward mapping:
+            # x1 = (x - tx + w0/2) * s
+            # y1 = (y - ty + h0/2) * s
+            w = w0 * s
+            h = h0 * s
+            shift_x = w/2 - target_size/2
+            shift_y = h/2 - target_size/2
+            # Unflip ty to original image coordinates
+            ty_unflipped = h0 - 1 - ty
+            # --- Correct inverse mapping from aligned (224x224) to original image space ---
+            # x1 = x' + shift_x
+            # y1 = y' + shift_y
+            # x = x1 / s + tx - w0/2
+            # y = y1 / s + ty_unflipped - h0/2
+            A_inv = np.array([
+                [1/s, 0, tx - w0/2 + shift_x/s],
+                [0, 1/s, ty_unflipped - h0/2 + shift_y/s]
+            ], dtype=np.float32)
+            pred_face_orig = cv2.warpAffine(pred_face_np, A_inv, (w0, h0), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
+            # Create side-by-side image
+            side_by_side = np.concatenate([np.array(orig_im), pred_face_orig], axis=1)
+            side_by_side_img = Image.fromarray(side_by_side)
+            save_path = os.path.join(output_dir, f"{img_name}_orig_and_predface.png")
+            side_by_side_img.save(save_path)
+            print(f"Saved side-by-side original and pred_face to {save_path}")
 
 
 if __name__ == '__main__':   
