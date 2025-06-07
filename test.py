@@ -93,12 +93,28 @@ def main(rank, img_folder, output_dir, face_recon_ckpt_path, parametric_face_mod
             pred_face_np = (pred_face_np * 255).clip(0,255).astype(np.uint8)
             pred_face_orig = inverse_align_img(pred_face_np, transparams)
 
-            # Create side-by-side image
-            side_by_side = np.concatenate([np.array(orig_im), pred_face_orig], axis=1)
+            # Inverse align the mask_with_only_lines
+            mask_lines_np = mask_with_only_lines[0]  # (224, 224, 3), uint8
+            mask_lines_orig = inverse_align_img(mask_lines_np, transparams)
+
+            # Create composite image: original * (1-mask) + pred_face * mask
+            # mask_lines_orig: (H, W, 3), uint8, values 0 or 255
+            mask_bin = (mask_lines_orig > 127).astype(np.uint8)  # (H, W, 3), 0 or 1
+            orig_arr = np.array(orig_im).astype(np.uint8)
+            # Ensure all images are same size
+            if orig_arr.shape != pred_face_orig.shape:
+                # Resize pred_face_orig and mask_bin to match orig_arr
+                pred_face_orig = cv2.resize(pred_face_orig, (orig_arr.shape[1], orig_arr.shape[0]), interpolation=cv2.INTER_LINEAR)
+                mask_bin = cv2.resize(mask_bin, (orig_arr.shape[1], orig_arr.shape[0]), interpolation=cv2.INTER_NEAREST)
+            composite = orig_arr * (1 - mask_bin) + pred_face_orig * mask_bin
+            composite = composite.astype(np.uint8)
+
+            # Create side-by-side-by-side-by-side image
+            side_by_side = np.concatenate([orig_arr, pred_face_orig, mask_lines_orig, composite], axis=1)
             side_by_side_img = Image.fromarray(side_by_side)
-            save_path = os.path.join(output_dir, f"{img_name}_orig_and_predface.png")
+            save_path = os.path.join(output_dir, f"{img_name}_orig_predface_masklines_composite.png")
             side_by_side_img.save(save_path)
-            print(f"Saved side-by-side original and pred_face to {save_path}")
+            print(f"Saved 4-way original, pred_face, mask_with_only_lines, and composite to {save_path}")
 
 
 if __name__ == '__main__':   
