@@ -69,6 +69,7 @@ def extract_5p(lm):
     lm5p = lm5p[[1, 2, 0, 3, 4], :]
     return lm5p
 
+
 # utils for face reconstruction
 def align_img(img, lm, lm3D, mask=None, target_size=224., rescale_factor=102.):
     """
@@ -100,3 +101,28 @@ def align_img(img, lm, lm3D, mask=None, target_size=224., rescale_factor=102.):
     trans_params = np.array([w0, h0, s, t[0], t[1]])
 
     return trans_params, img_new, lm_new, mask_new
+
+def inverse_align_img(img_align, transparams):
+    """
+    Maps the predicted face image (aligned 224x224) back to the original image space using the inverse of the alignment transform.
+    Args:
+        img_align: numpy array of shape (224, 224, 3), dtype uint8
+        transparams: [w0, h0, s, tx, ty] from align_img
+    Returns:
+        img_orig: numpy array (h0, w0, 3), mapped to original image coordinates
+    """
+    import cv2
+    w0, h0, s, tx, ty = transparams
+    w0, h0 = int(w0), int(h0)
+    target_size = img_align.shape[0]
+    w = w0 * s
+    h = h0 * s
+    shift_x = w/2 - target_size/2
+    shift_y = h/2 - target_size/2
+    ty_unflipped = h0 - 1 - ty
+    A_inv = np.array([
+        [1/s, 0, tx - w0/2 + shift_x/s],
+        [0, 1/s, ty_unflipped - h0/2 + shift_y/s]
+    ], dtype=np.float32)
+    img_orig = cv2.warpAffine(img_align, A_inv, (w0, h0), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
+    return img_orig

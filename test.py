@@ -4,7 +4,7 @@ import numpy as np
 import torch
 from PIL import Image
 
-from util.preprocess import align_img
+from util.preprocess import align_img, inverse_align_img
 from util.load_mats import load_lm3d
 from models.facerecon_model import FaceReconModel
 from util.landmarks import process_single_landmarks, mask_above_polyline
@@ -89,32 +89,10 @@ def main(rank, img_folder, output_dir, face_recon_ckpt_path, parametric_face_mod
 
             # --- Transform pred_face back to original image space and save side-by-side plot ---
             # pred_face: (B, 3, 224, 224), orig_im: PIL.Image, transparams: [w0, h0, s, tx, ty]
-            import cv2
             pred_face_np = pred_face.detach().cpu().numpy()[0].transpose(1,2,0)  # (224, 224, 3)
             pred_face_np = (pred_face_np * 255).clip(0,255).astype(np.uint8)
-            w0, h0, s, tx, ty = transparams
-            w0, h0 = int(w0), int(h0)
-            target_size = pred_face_np.shape[0]
-            # --- Compute the true inverse affine transform used in resize_n_crop_img ---
-            # Forward mapping:
-            # x1 = (x - tx + w0/2) * s
-            # y1 = (y - ty + h0/2) * s
-            w = w0 * s
-            h = h0 * s
-            shift_x = w/2 - target_size/2
-            shift_y = h/2 - target_size/2
-            # Unflip ty to original image coordinates
-            ty_unflipped = h0 - 1 - ty
-            # --- Correct inverse mapping from aligned (224x224) to original image space ---
-            # x1 = x' + shift_x
-            # y1 = y' + shift_y
-            # x = x1 / s + tx - w0/2
-            # y = y1 / s + ty_unflipped - h0/2
-            A_inv = np.array([
-                [1/s, 0, tx - w0/2 + shift_x/s],
-                [0, 1/s, ty_unflipped - h0/2 + shift_y/s]
-            ], dtype=np.float32)
-            pred_face_orig = cv2.warpAffine(pred_face_np, A_inv, (w0, h0), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
+            pred_face_orig = inverse_align_img(pred_face_np, transparams)
+
             # Create side-by-side image
             side_by_side = np.concatenate([np.array(orig_im), pred_face_orig], axis=1)
             side_by_side_img = Image.fromarray(side_by_side)
