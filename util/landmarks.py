@@ -85,15 +85,56 @@ def mask_above_polyline(mask_img, landmark):
         Modified mask_img with pixels above the polyline set to zero
     """
     H, W = mask_img.shape[:2]
-    poly_indices = [68, 70, 31, 32, 33, 34, 35, 71, 69]
-    poly_points = np.array([landmark[idx] for idx in poly_indices], dtype=np.int32)
-    # Add points for left and right border
-    poly_points = np.vstack([np.array([0, poly_points[0, 1]]), poly_points, np.array([W-1, poly_points[-1, 1]])])
-    # Add points for top border
-    poly_points = np.vstack([poly_points, np.array([W-1, 0]), np.array([0, 0])])
-    # Close the polygon
-    poly_points = np.vstack([poly_points, poly_points[0]])
-    poly_points = poly_points.reshape((-1, 1, 2))
-    cv2.fillPoly(mask_img, [poly_points], 0)
+    if landmark.shape[0] < 72:
+        return mask_img
+    pt_30 = landmark[30]
+    pt_33 = landmark[33]
+    pt_68 = landmark[68]
+    pt_69 = landmark[69]
+
+    if pt_30[0] < pt_68[0]:
+        # Mask above the line: right border -> 69 -> 33 -> left border
+        x_right = W - 1
+        y_right = int(round(pt_69[1] + (pt_33[1] - pt_69[1]) * ((W-1) - pt_69[0]) / (pt_33[0] - pt_69[0]) )) if pt_33[0] != pt_69[0] else int(round(pt_69[1]))
+        x_left = 0
+        y_left = int(round(pt_33[1] + (pt_69[1] - pt_33[1]) * (0 - pt_33[0]) / (pt_69[0] - pt_33[0]) )) if pt_69[0] != pt_33[0] else int(round(pt_33[1]))
+        poly_points = np.array([
+            [x_right, y_right],
+            [int(round(pt_69[0])), int(round(pt_69[1]))],
+            [int(round(pt_33[0])), int(round(pt_33[1]))],
+            [x_left, y_left],
+            [x_left, 0],
+            [x_right, 0],
+        ], dtype=np.int32)
+        poly_points = poly_points.reshape((-1, 1, 2))
+        cv2.fillPoly(mask_img, [poly_points], 0)
+    elif pt_30[0] > pt_69[0]:
+        # Mask above the line: left border -> 68 -> 33 -> right border
+        x_left = 0
+        y_left = int(round(pt_68[1] + (pt_33[1] - pt_68[1]) * (0 - pt_68[0]) / (pt_33[0] - pt_68[0]) )) if pt_33[0] != pt_68[0] else int(round(pt_68[1]))
+        x_right = W - 1
+        y_right = int(round(pt_33[1] + (pt_68[1] - pt_33[1]) * ((W-1) - pt_33[0]) / (pt_68[0] - pt_33[0]) )) if pt_68[0] != pt_33[0] else int(round(pt_33[1]))
+        poly_points = np.array([
+            [x_left, y_left],
+            [int(round(pt_68[0])), int(round(pt_68[1]))],
+            [int(round(pt_33[0])), int(round(pt_33[1]))],
+            [x_right, y_right],
+            [x_right, 0],
+            [x_left, 0],
+        ], dtype=np.int32)
+        poly_points = poly_points.reshape((-1, 1, 2))
+        cv2.fillPoly(mask_img, [poly_points], 0)
+    else:
+        # Default/original behavior
+        poly_indices = [68, 70, 31, 32, 33, 34, 35, 71, 69]
+        poly_points = np.array([landmark[idx] for idx in poly_indices], dtype=np.int32)
+        # Add points for left and right border
+        poly_points = np.vstack([np.array([0, poly_points[0, 1]]), poly_points, np.array([W-1, poly_points[-1, 1]])])
+        # Add points for top border
+        poly_points = np.vstack([poly_points, np.array([W-1, 0]), np.array([0, 0])])
+        # Close the polygon
+        poly_points = np.vstack([poly_points, poly_points[0]])
+        poly_points = poly_points.reshape((-1, 1, 2))
+        cv2.fillPoly(mask_img, [poly_points], 0)
 
     return mask_img

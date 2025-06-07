@@ -6,8 +6,7 @@ import os
 
 def draw_lines_through_landmarks(mask_img, landmark):
     """
-    Draw a line from the left border through landmark 68 to 70,
-    and from the right border through 69 to 71.
+    Draw lines for visualization depending on the position of point 30 relative to 68 and 69.
     Args:
         mask_img: numpy array (H, W, 3)
         landmark: numpy array (N, 2), must have at least 72 points
@@ -17,26 +16,49 @@ def draw_lines_through_landmarks(mask_img, landmark):
     H, W = mask_img.shape[:2]
     if landmark.shape[0] < 72:
         return mask_img
+    pt_30 = landmark[30]
+    pt_33 = landmark[33]
     pt_68 = landmark[68]
     pt_69 = landmark[69]
     pt_70 = landmark[70]
     pt_71 = landmark[71]
-    # Line from left border through 68 to 70
-    x0_left = 0
-    y0_left = int(round(pt_68[1] + (pt_70[1] - pt_68[1]) * (0 - pt_68[0]) / (pt_70[0] - pt_68[0]) )) if pt_70[0] != pt_68[0] else int(round(pt_68[1]))
-    x1_left = int(round(pt_70[0]))
-    y1_left = int(round(pt_70[1]))
-    cv2.line(mask_img, (x0_left, y0_left), (x1_left, y1_left), (0,255,0), 2)
-    # Line from right border through 69 to 71
-    x0_right = W-1
-    y0_right = int(round(pt_69[1] + (pt_71[1] - pt_69[1]) * ((W-1) - pt_69[0]) / (pt_71[0] - pt_69[0]) )) if pt_71[0] != pt_69[0] else int(round(pt_69[1]))
-    x1_right = int(round(pt_71[0]))
-    y1_right = int(round(pt_71[1]))
-    cv2.line(mask_img, (x0_right, y0_right), (x1_right, y1_right), (0,255,0), 2)
-    # Draw polyline from 70 -> 31 -> 32 -> 33 -> 34 -> 35 -> 71
-    poly_indices = [70, 31, 32, 33, 34, 35, 71]
-    poly_points = np.array([landmark[idx] for idx in poly_indices], dtype=np.int32).reshape((-1, 1, 2))
-    cv2.polylines(mask_img, [poly_points], isClosed=False, color=(0,255,0), thickness=2)
+
+    if pt_30[0] < pt_68[0]:
+        # Draw from right border -> 69 -> 33 -> left border
+        x_right = W - 1
+        y_right = int(round(pt_69[1] + (pt_33[1] - pt_69[1]) * ((W-1) - pt_69[0]) / (pt_33[0] - pt_69[0]) )) if pt_33[0] != pt_69[0] else int(round(pt_69[1]))
+        x_left = 0
+        y_left = int(round(pt_33[1] + (pt_69[1] - pt_33[1]) * (0 - pt_33[0]) / (pt_69[0] - pt_33[0]) )) if pt_69[0] != pt_33[0] else int(round(pt_33[1]))
+        cv2.line(mask_img, (x_right, y_right), (int(round(pt_69[0])), int(round(pt_69[1]))), (0,255,0), 2)
+        cv2.line(mask_img, (int(round(pt_69[0])), int(round(pt_69[1]))), (int(round(pt_33[0])), int(round(pt_33[1]))), (0,255,0), 2)
+        cv2.line(mask_img, (int(round(pt_33[0])), int(round(pt_33[1]))), (x_left, y_left), (0,255,0), 2)
+    elif pt_30[0] > pt_69[0]:
+        # Draw from left border -> 68 -> 33 -> right border
+        x_left = 0
+        y_left = int(round(pt_68[1] + (pt_33[1] - pt_68[1]) * (0 - pt_68[0]) / (pt_33[0] - pt_68[0]) )) if pt_33[0] != pt_68[0] else int(round(pt_68[1]))
+        x_right = W - 1
+        y_right = int(round(pt_33[1] + (pt_68[1] - pt_33[1]) * ((W-1) - pt_33[0]) / (pt_68[0] - pt_33[0]) )) if pt_68[0] != pt_33[0] else int(round(pt_33[1]))
+        cv2.line(mask_img, (x_left, y_left), (int(round(pt_68[0])), int(round(pt_68[1]))), (0,255,0), 2)
+        cv2.line(mask_img, (int(round(pt_68[0])), int(round(pt_68[1]))), (int(round(pt_33[0])), int(round(pt_33[1]))), (0,255,0), 2)
+        cv2.line(mask_img, (int(round(pt_33[0])), int(round(pt_33[1]))), (x_right, y_right), (0,255,0), 2)
+    else:
+        # Default/original behavior
+        # Line from left border through 68 to 70
+        x0_left = 0
+        y0_left = int(round(pt_68[1] + (pt_70[1] - pt_68[1]) * (0 - pt_68[0]) / (pt_70[0] - pt_68[0]) )) if pt_70[0] != pt_68[0] else int(round(pt_68[1]))
+        x1_left = int(round(pt_70[0]))
+        y1_left = int(round(pt_70[1]))
+        cv2.line(mask_img, (x0_left, y0_left), (x1_left, y1_left), (0,255,0), 2)
+        # Line from right border through 69 to 71
+        x0_right = W-1
+        y0_right = int(round(pt_69[1] + (pt_71[1] - pt_69[1]) * ((W-1) - pt_69[0]) / (pt_71[0] - pt_69[0]) )) if pt_71[0] != pt_69[0] else int(round(pt_69[1]))
+        x1_right = int(round(pt_71[0]))
+        y1_right = int(round(pt_71[1]))
+        cv2.line(mask_img, (x0_right, y0_right), (x1_right, y1_right), (0,255,0), 2)
+        # Draw polyline from 70 -> 31 -> 32 -> 33 -> 34 -> 35 -> 71
+        poly_indices = [70, 31, 32, 33, 34, 35, 71]
+        poly_points = np.array([landmark[idx] for idx in poly_indices], dtype=np.int32).reshape((-1, 1, 2))
+        cv2.polylines(mask_img, [poly_points], isClosed=False, color=(0,255,0), thickness=2)
     return mask_img
 
 def draw_landmarks(img, landmark, color='r', step=2):
