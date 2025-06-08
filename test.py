@@ -58,7 +58,7 @@ def main(rank, img_folder, output_dir, face_recon_ckpt_path, parametric_face_mod
         
         with torch.no_grad():
             face_shape, pose, gamma_coef, tex_coef = model.proj_img_to_3d(im_tensor.to(device), use_exp=True)
-            pred_face, pred_mask, pred_lm = model.proj_3d_to_img(face_shape, pose, gamma_coef,None) #tex_coef)
+            pred_face, pred_mask, pred_lm = model.proj_3d_to_img(face_shape, pose, gamma_coef=None, tex_coef=None)
             print("pred_mask", pred_mask.shape, pred_mask.dtype, pred_mask.min(), pred_mask.max())
             # Process landmarks outside visualization
             pred_lm_numpy = pred_lm.detach().cpu().numpy()

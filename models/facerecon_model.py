@@ -77,7 +77,7 @@ class FaceReconModel():
 
         return pred_face_shape, pred_pose, pred_gamma_coef, pred_tex_coef
 
-    def proj_3d_to_img(self, face_shape, pose, gamma_coef, tex_coef=None):
+    def proj_3d_to_img(self, face_shape, pose, gamma_coef=None, tex_coef=None):
         """
         Project 3D face parameters to 2D image outputs.
 
@@ -86,8 +86,8 @@ class FaceReconModel():
                 Shape (B, N, 3), 3D face shape in model coordinates
             pose : dict
                 {'rot': rotation, 'trans': translation}, each torch.Tensor
-            gamma_coef : torch.Tensor
-                Shape (B, 27), spherical harmonics lighting coefficients
+            gamma_coef : torch.Tensor or None
+                Shape (B, 27), spherical harmonics lighting coefficients (optional) if None, Lambertian shading is used
             tex_coef : torch.Tensor or None
                 Shape (B, 80), texture coefficients (optional)
 
@@ -114,7 +114,7 @@ class FaceReconModel():
 
     def forward(self):
         output_coeff = self.net_recon(self.input_img)
-        pred_face_shape, pred_vertex, pred_tex, pred_color, pred_lm = \
+        pred_face_shape, pred_vertex, _, pred_color, pred_lm = \
             self.facemodel.compute_for_render(output_coeff)
         pred_mask, _, pred_face = self.renderer(
             pred_vertex, self.facemodel.face_buf, feat=pred_color)

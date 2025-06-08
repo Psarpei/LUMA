@@ -181,6 +181,26 @@ class ParametricFaceModel:
         face_color = torch.cat([r, g, b], dim=-1) * face_texture
         return face_color
 
+    def compute_lambertian_color(self, face_norm, face_texture, light_dir=None):
+        """
+        Return:
+            face_color       -- torch.tensor, size (B, N, 3), shaded white or textured
+
+        Parameters:
+            face_norm        -- torch.tensor, size (B, N, 3), normals
+            face_texture     -- torch.tensor, size (B, N, 3), base color
+            light_dir        -- optional torch.tensor, (3,), default = [0, 0, 1]
+        """
+        if light_dir is None:
+            light_dir = torch.tensor([0.0, 0.0, 1.0], device=self.device)  # frontal light
+
+        light_dir = light_dir / light_dir.norm()
+        shading = torch.clamp(face_norm @ light_dir, min=0.0).unsqueeze(-1)  # (B, N, 1)
+        shading = shading.expand(-1, -1, 3)  # grayscale to RGB
+
+        face_color = shading * face_texture  # apply shading to white or textured face
+
+        return face_color
     
     def compute_rotation(self, angles):
         """
@@ -301,37 +321,38 @@ class ParametricFaceModel:
         
         return face_shape, pose, coef_dict['gamma'], coef_dict['tex']
 
-    def compute_for_render_from_shape(self, face_shape, pose, gamma_coef, tex_coef=None):
+    def compute_for_render_from_shape(self, face_shape, pose, gamma_coef=None, tex_coef=None):
         """
         Return:
-            face_vertex     -- torch.tensor, size (B, N, 3), in camera coordinate
-            face_texture    -- torch.tensor, size (B, N, 3), in RGB order
-            face_color      -- torch.tensor, size (B, N, 3), in RGB order
-            landmark        -- torch.tensor, size (B, 68, 2), y direction is opposite to v direction
-        Parameters:
-            face_shape      -- torch.tensor, size (B, N, 3), in model coordinate
-            pose            -- a dict of torch.tensors, {'rot': rotation, 'trans': translation}
-            gamma_coef      -- torch.tensor, size (B, 27), SH coeffs
-            tex_coef        -- (optional) torch.tensor, size (B, 80), texture coeffs
+            face_vertex     -- (B, N, 3)
+            face_color      -- (B, N, 3)
+            landmark        -- (B, 68, 2)
         """
-
         face_shape_transformed = self.transform(face_shape, pose['rot'], pose['trans'])
         face_vertex = self.to_camera(face_shape_transformed)
-        
         face_proj = self.to_image(face_vertex)
         landmark = self.get_landmarks(face_proj)
 
+        # Optional texture
         if tex_coef is not None:
             face_texture = self.compute_texture(tex_coef)
         else:
             B, N = face_vertex.shape[:2]
             face_texture = torch.ones((B, N, 3), device=self.device)
 
+        # Normals
         face_norm = self.compute_norm(face_shape)
         face_norm_roted = face_norm @ pose['rot']
-        face_color = self.compute_color(face_texture, face_norm_roted, gamma_coef)
+
+        # Lighting
+        if gamma_coef is None:
+            face_color = self.compute_lambertian_color(face_norm_roted, face_texture)
+            
+        else:
+            face_color = self.compute_color(face_texture, face_norm_roted, gamma_coef)
 
         return face_vertex, face_color, landmark
+
 
     def compute_for_render(self, coeffs):
         """
@@ -361,4 +382,4 @@ class ParametricFaceModel:
         face_norm_roted = face_norm @ rotation
         face_color = self.compute_color(face_texture, face_norm_roted, coef_dict['gamma'])
 
-        return face_vertex, face_texture, face_color, landmark
+        return face_shape, face_vertex, face_texture, face_color, landmark
