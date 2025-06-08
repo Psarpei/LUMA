@@ -80,6 +80,9 @@ def main(rank, img_folder, output_dir, face_recon_ckpt_path, parametric_face_mod
                 # Fill all holes in the mask using binary_fill_holes (robust to landmark errors)
                 mask_bin = (mask_clean[...,0] > 0).astype(np.uint8)
                 mask_filled = binary_fill_holes(mask_bin).astype(np.uint8)
+                # Extend the mask by dilation
+                kernel = np.ones((5, 5), np.uint8)
+                mask_filled = cv2.dilate(mask_filled, kernel, iterations=3)
                 mask_clean[...,0] = mask_filled
                 lm = processed_landmarks_batch[k]
                 mask_with_only_lines[k] = mask_above_polyline(mask_clean, lm)
