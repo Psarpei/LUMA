@@ -141,7 +141,7 @@ def mask_above_polyline(mask_img, landmark):
 
     return mask_img
 
-def process_mask_with_landmarks(mask, landmarks, dilation_kernel_size=5, dilation_iterations=2, blur_kernel_size=11, blur_iterations=3):
+def process_mask_with_landmarks(mask, landmarks, dilation_kernel_size=7, dilation_iterations=2, blur_kernel_size=25, blur_iterations=1):
     """
     Post-process a predicted face mask using hole filling, dilation, polyline masking, and smoothing.
     Args:
