@@ -141,14 +141,14 @@ def mask_above_polyline(mask_img, landmark):
 
     return mask_img
 
-def process_mask_with_landmarks(mask, landmarks, dilation_kernel_size=7, dilation_iterations=2, blur_kernel_size=25, blur_iterations=1):
+def process_mask_with_landmarks(mask, landmarks, dilation_kernel_size=7, dilation_iterations=3, blur_kernel_size=25, blur_iterations=1):
     """
-    Post-process a predicted face mask using hole filling, dilation, polyline masking, and smoothing.
+    Post-process a predicted face mask using hole filling, dilation, polyline masking, erosion, and smoothing.
     Args:
         mask: numpy array (H, W, 1) or (H, W), uint8 or bool
         landmarks: numpy array (N, 2)
         dilation_kernel_size: int, size of the dilation kernel (default 5)
-        dilation_iterations: int, number of dilation iterations (default 2)
+        dilation_iterations: int, number of dilation iterations (default 3)
         blur_kernel_size: int, size of the Gaussian blur kernel (default 11)
         blur_iterations: int, number of times to apply Gaussian blur (default 3)
     Returns:
@@ -169,9 +169,11 @@ def process_mask_with_landmarks(mask, landmarks, dilation_kernel_size=7, dilatio
     mask_poly = np.expand_dims(mask_filled, axis=2) if mask_filled.ndim == 2 else mask_filled
     mask_poly = mask_above_polyline(mask_poly, landmarks)
     mask_poly = mask_poly.squeeze()
-    # 4. Scale to 0-255
-    mask_out = (mask_poly * 255).astype(np.uint8)
-    # 5. Smoothing
+    # 4. Erosion
+    mask_erosion = cv2.erode(mask_poly, kernel, iterations=1)
+    # 5. Scale to 0-255
+    mask_out = (mask_erosion * 255).astype(np.uint8)
+    # 6. Smoothing
     for _ in range(blur_iterations):
         mask_out = cv2.GaussianBlur(mask_out, (blur_kernel_size, blur_kernel_size), 0)
     return mask_out
