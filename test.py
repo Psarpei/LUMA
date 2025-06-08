@@ -82,13 +82,19 @@ def main(rank, img_folder, output_dir, face_recon_ckpt_path, parametric_face_mod
                 mask_filled = binary_fill_holes(mask_bin).astype(np.uint8)
                 # Extend the mask by dilation
                 kernel = np.ones((5, 5), np.uint8)
-                mask_filled = cv2.dilate(mask_filled, kernel, iterations=3)
+                mask_filled = cv2.dilate(mask_filled, kernel, iterations=2)
                 mask_clean[...,0] = mask_filled
                 lm = processed_landmarks_batch[k]
-                mask_with_only_lines[k] = mask_above_polyline(mask_clean, lm)
+                mask_out = mask_above_polyline(mask_clean, lm)
+                mask_out = (mask_out * 255).astype(np.uint8)
+                # Apply Gaussian blur 3 times in a loop to the mask after mask_above_polyline for stronger smoothing
+                print(mask_out.dtype, mask_out.max(), mask_out.min())
+                for _ in range(3):
+                    mask_out = cv2.GaussianBlur(mask_out, (11, 11), 0)
+                print(mask_out.dtype, mask_out.max(), mask_out.min())
+                mask_with_only_lines[k] = mask_out[:, :, None]
 
             mask_with_only_lines = np.repeat(mask_with_only_lines, 3, axis=3)
-            mask_with_only_lines = (mask_with_only_lines * 255).astype(np.uint8)
             # Flip ground truth landmarks to image coordinates before visualization
             H = im_tensor.shape[2]
             gt_lm_flipped = lm_tensor.clone()
@@ -108,14 +114,14 @@ def main(rank, img_folder, output_dir, face_recon_ckpt_path, parametric_face_mod
 
             # Create composite image: original * (1-mask) + pred_face * mask
             # mask_lines_orig: (H, W, 3), uint8, values 0 or 255
-            mask_bin = (mask_lines_orig > 127).astype(np.uint8)  # (H, W, 3), 0 or 1
+            mask_blend = (mask_lines_orig / 255).astype(np.float32)  # (H, W, 3), 0 or 1
             orig_arr = np.array(orig_im).astype(np.uint8)
             # Ensure all images are same size
             if orig_arr.shape != pred_face_orig.shape:
                 # Resize pred_face_orig and mask_bin to match orig_arr
                 pred_face_orig = cv2.resize(pred_face_orig, (orig_arr.shape[1], orig_arr.shape[0]), interpolation=cv2.INTER_LINEAR)
-                mask_bin = cv2.resize(mask_bin, (orig_arr.shape[1], orig_arr.shape[0]), interpolation=cv2.INTER_NEAREST)
-            composite = orig_arr * (1 - mask_bin) + pred_face_orig * mask_bin
+                mask_blend = cv2.resize(mask_blend, (orig_arr.shape[1], orig_arr.shape[0]), interpolation=cv2.INTER_NEAREST)
+            composite = orig_arr * (1 - mask_blend) + pred_face_orig * mask_blend
             composite = composite.astype(np.uint8)
 
             # Create side-by-side-by-side-by-side image
