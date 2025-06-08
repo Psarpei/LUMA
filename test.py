@@ -9,7 +9,7 @@ from scipy.ndimage import binary_fill_holes
 from util.preprocess import align_img, inverse_align_img
 from util.load_mats import load_lm3d
 from models.facerecon_model import FaceReconModel
-from util.landmarks import process_single_landmarks, mask_above_polyline
+from util.landmarks import process_single_landmarks, process_mask_with_landmarks
 from util.visualization import save_visualization
 
 
@@ -76,22 +76,8 @@ def main(rank, img_folder, output_dir, face_recon_ckpt_path, parametric_face_mod
             B, H, W, _ = mask_vis.shape
             mask_with_only_lines = np.zeros((B, H, W, 1), dtype=np.uint8)
             for k in range(B):
-                mask_clean = pred_mask_numpy[k].astype(np.uint8)
-                # Fill all holes in the mask using binary_fill_holes (robust to landmark errors)
-                mask_bin = (mask_clean[...,0] > 0).astype(np.uint8)
-                mask_filled = binary_fill_holes(mask_bin).astype(np.uint8)
-                # Extend the mask by dilation
-                kernel = np.ones((5, 5), np.uint8)
-                mask_filled = cv2.dilate(mask_filled, kernel, iterations=2)
-                mask_clean[...,0] = mask_filled
-                lm = processed_landmarks_batch[k]
-                mask_out = mask_above_polyline(mask_clean, lm)
-                mask_out = (mask_out * 255).astype(np.uint8)
-                # Apply Gaussian blur 3 times in a loop to the mask after mask_above_polyline for stronger smoothing
-                print(mask_out.dtype, mask_out.max(), mask_out.min())
-                for _ in range(3):
-                    mask_out = cv2.GaussianBlur(mask_out, (11, 11), 0)
-                print(mask_out.dtype, mask_out.max(), mask_out.min())
+                # Use unified robust mask post-processing function
+                mask_out = process_mask_with_landmarks(pred_mask_numpy[k], processed_landmarks_batch[k])
                 mask_with_only_lines[k] = mask_out[:, :, None]
 
             mask_with_only_lines = np.repeat(mask_with_only_lines, 3, axis=3)

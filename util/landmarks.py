@@ -1,5 +1,7 @@
 import numpy as np
 import cv2
+from scipy.ndimage import binary_fill_holes
+
 
 def find_mask_border_point_at_y(mask, y, from_left=True):
     """
@@ -138,3 +140,38 @@ def mask_above_polyline(mask_img, landmark):
         cv2.fillPoly(mask_img, [poly_points], 0)
 
     return mask_img
+
+def process_mask_with_landmarks(mask, landmarks, dilation_kernel_size=5, dilation_iterations=2, blur_kernel_size=11, blur_iterations=3):
+    """
+    Post-process a predicted face mask using hole filling, dilation, polyline masking, and smoothing.
+    Args:
+        mask: numpy array (H, W, 1) or (H, W), uint8 or bool
+        landmarks: numpy array (N, 2)
+        dilation_kernel_size: int, size of the dilation kernel (default 5)
+        dilation_iterations: int, number of dilation iterations (default 2)
+        blur_kernel_size: int, size of the Gaussian blur kernel (default 11)
+        blur_iterations: int, number of times to apply Gaussian blur (default 3)
+    Returns:
+        Processed mask as (H, W), uint8, values 0-255, with smooth edges.
+    """
+
+    # Ensure mask is (H, W)
+    if mask.ndim == 3 and mask.shape[2] == 1:
+        mask = mask[..., 0]
+    mask = mask.astype(np.uint8)
+    # 1. Fill holes
+    mask_bin = (mask > 0).astype(np.uint8)
+    mask_filled = binary_fill_holes(mask_bin).astype(np.uint8)
+    # 2. Dilation
+    kernel = np.ones((dilation_kernel_size, dilation_kernel_size), np.uint8)
+    mask_filled = cv2.dilate(mask_filled, kernel, iterations=dilation_iterations)
+    # 3. Polyline masking
+    mask_poly = np.expand_dims(mask_filled, axis=2) if mask_filled.ndim == 2 else mask_filled
+    mask_poly = mask_above_polyline(mask_poly, landmarks)
+    mask_poly = mask_poly.squeeze()
+    # 4. Scale to 0-255
+    mask_out = (mask_poly * 255).astype(np.uint8)
+    # 5. Smoothing
+    for _ in range(blur_iterations):
+        mask_out = cv2.GaussianBlur(mask_out, (blur_kernel_size, blur_kernel_size), 0)
+    return mask_out
