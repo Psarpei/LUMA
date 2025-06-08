@@ -1,14 +1,16 @@
-import argparse
 import os
-import numpy as np
 import torch
+import numpy as np
+import cv2
+import argparse
 from PIL import Image
+from scipy.ndimage import binary_fill_holes
 
 from util.preprocess import align_img, inverse_align_img
 from util.load_mats import load_lm3d
 from models.facerecon_model import FaceReconModel
 from util.landmarks import process_single_landmarks, mask_above_polyline
-from util.visualization import save_visualization#
+from util.visualization import save_visualization
 
 
 def get_data_path(root='examples'):
@@ -75,6 +77,10 @@ def main(rank, img_folder, output_dir, face_recon_ckpt_path, parametric_face_mod
             mask_with_only_lines = np.zeros((B, H, W, 1), dtype=np.uint8)
             for k in range(B):
                 mask_clean = pred_mask_numpy[k].astype(np.uint8)
+                # Fill all holes in the mask using binary_fill_holes (robust to landmark errors)
+                mask_bin = (mask_clean[...,0] > 0).astype(np.uint8)
+                mask_filled = binary_fill_holes(mask_bin).astype(np.uint8)
+                mask_clean[...,0] = mask_filled
                 lm = processed_landmarks_batch[k]
                 mask_with_only_lines[k] = mask_above_polyline(mask_clean, lm)
 
