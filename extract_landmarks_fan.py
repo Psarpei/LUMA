@@ -3,6 +3,7 @@ import numpy as np
 import face_alignment
 from skimage import io
 from glob import glob
+import torch
 
 def extract_five_landmarks(landmarks_68):
     left_eye = landmarks_68[36:42].mean(axis=0)
@@ -23,7 +24,12 @@ def process_directory(img_dir):
     output_dir = os.path.join(img_dir, "detections")
     os.makedirs(output_dir, exist_ok=True)
 
-    fa = face_alignment.FaceAlignment(face_alignment.LandmarksType.TWO_D, flip_input=False)
+    # Force GPU usage if available
+    fa = face_alignment.FaceAlignment(
+        face_alignment.LandmarksType.TWO_D,
+        flip_input=False,
+        device='cuda' if torch.cuda.is_available() else 'cpu'
+    )
 
     img_exts = ('*.jpg', '*.jpeg', '*.png', '*.bmp')
     image_paths = []
@@ -55,6 +61,7 @@ def process_directory(img_dir):
 
         except Exception as e:
             print(f"{img_name}: error - {e}")
+
 
 if __name__ == "__main__":
     import argparse
