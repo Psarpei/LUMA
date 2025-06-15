@@ -53,8 +53,11 @@ def main():
     output_dir = os.path.join(input_dir, "detections")
     os.makedirs(output_dir, exist_ok=True)
 
+    landmarks_dir = os.path.join(input_dir, "landmarks")
+    os.makedirs(landmarks_dir, exist_ok=True)
+
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    fa = face_alignment.FaceAlignment(face_alignment.LandmarksType.TWO_D, flip_input=False, device=device, face_detector='sfd')
+    fa = face_alignment.FaceAlignment(face_alignment.LandmarksType.THREE_D, flip_input=False, device=device, face_detector='sfd')
 
     for batch in tqdm(load_images_with_paths(input_dir, args.batch_size, args.resolution), desc="Processing batches"):
         if not batch:
@@ -73,14 +76,17 @@ def main():
             print("Batch skipped due to detection failure or mismatched output.")
             continue
 
-        for (w, h), img_path, landmarks_68 in zip(sizes, paths, preds):
+        for (w, h), img_path, landmarks_68_3d in zip(sizes, paths, preds):
             img_name = os.path.basename(img_path)
             txt_name = os.path.splitext(img_name)[0] + '.txt'
             txt_path = os.path.join(output_dir, txt_name)
 
-            if landmarks_68 is None or landmarks_68.shape != (68, 2):
-                print(f"{img_name}: detected face but landmarks shape {landmarks_68.shape if landmarks_68 is not None else None} is invalid")
+            if landmarks_68_3d is None or landmarks_68_3d.shape != (68, 3):
+                print(f"{img_name}: detected face but landmarks shape {landmarks_68_3d.shape if landmarks_68_3d is not None else None} is invalid")
                 continue
+
+            # Use only x and y for further processing
+            landmarks_68 = landmarks_68_3d[:, :2]
 
             scale_x = w / args.resolution
             scale_y = h / args.resolution
@@ -89,6 +95,16 @@ def main():
             landmarks_5 = extract_five_landmarks(landmarks_68)
             save_landmarks_txt(landmarks_5, txt_path)
             print(f"Saved landmarks for {img_name} to {txt_name}")
+
+            # Invert y-axis for 68 landmarks
+            landmarks_68_flipy = landmarks_68.copy()
+            landmarks_68_flipy[:, 1] = h - landmarks_68_flipy[:, 1]
+
+            # Save 68 landmarks in landmarks_dir
+            landmarks68_txt_name = os.path.splitext(img_name)[0] + '.txt'
+            landmarks68_txt_path = os.path.join(landmarks_dir, landmarks68_txt_name)
+            save_landmarks_txt(landmarks_68_flipy, landmarks68_txt_path)
+            print(f"Saved 68 landmarks (y flipped) for {img_name} to {landmarks68_txt_name} in 'landmarks' dir")
 
 if __name__ == "__main__":
     main()
