@@ -62,9 +62,9 @@ def main(img_dir):
 
     # Invert y for both sets of landmarks (since both were saved with y inverted)
     lm_plot = lm.copy()
-    lm_plot[:, 1] = h - lm_plot[:, 1]
+    lm_plot[:, 1] = h - 1 - lm_plot[:, 1]
     lm_orig_plot = lm_orig.copy()
-    lm_orig_plot[:, 1] = h - lm_orig_plot[:, 1]
+    lm_orig_plot[:, 1] = h - 1 - lm_orig_plot[:, 1]
 
     # Plot
     plt.figure(figsize=(8, 8))

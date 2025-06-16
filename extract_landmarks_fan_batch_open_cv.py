@@ -98,7 +98,7 @@ def main():
 
             # Invert y-axis for 68 landmarks
             landmarks_68_flipy = landmarks_68.copy()
-            landmarks_68_flipy[:, 1] = h - landmarks_68_flipy[:, 1]
+            landmarks_68_flipy[:, 1] = h - 1 - landmarks_68_flipy[:, 1]
 
             # Save 68 landmarks in landmarks_dir
             landmarks68_txt_name = os.path.splitext(img_name)[0] + '.txt'
