@@ -1,0 +1,19 @@
+# Conda dependencies (PyTorch & others)
+torch==1.6.0
+torchvision==0.7.0
+numpy==1.18.1
+scikit-image==0.16.2
+scipy==1.4.1
+Pillow==6.2.1
+ipython==7.13.0
+PyYAML==5.3.1  # 'yaml' in conda maps to PyYAML in pip
+
+# pip-only dependencies
+matplotlib==2.2.5
+opencv-python==3.4.9.33
+tensorboard==1.15.0
+tensorflow==1.15.0
+kornia==0.5.5
+dominate==2.6.0
+trimesh==3.9.20
+
